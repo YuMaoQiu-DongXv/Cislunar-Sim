@@ -100,6 +100,12 @@
   .speed-btns button.active{background:var(--accent);color:#04121f;border-color:transparent;font-weight:600;}
   .speed-slider{width:100%;}
 
+  /* Trail toggle */
+  .trail-toggle{display:flex;gap:6px;margin-bottom:12px;}
+  .trail-toggle button{flex:1;padding:7px 0;font-size:12px;border:1px solid var(--panel-border);
+    background:transparent;color:var(--text-dim);border-radius:8px;cursor:pointer;transition:.15s;}
+  .trail-toggle button.active{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border-color:transparent;font-weight:600;}
+
   .cam-btns{display:flex;gap:5px;margin-top:12px;flex-wrap:wrap;align-items:center;}
   .cam-btns button{flex:1;min-width:52px;padding:6px 0;font-size:11.5px;border:1px solid var(--panel-border);
     background:transparent;color:var(--text);border-radius:7px;cursor:pointer;transition:.15s;}
@@ -200,6 +206,10 @@
           <button class="btn btn-start" id="btn-start">开始模拟</button>
           <button class="btn btn-pause" id="btn-pause">暂停</button>
           <button class="btn btn-reset" id="btn-reset">重置</button>
+        </div>
+        <div class="trail-toggle">
+          <button data-trail="30d" class="active">最近 30 天</button>
+          <button data-trail="all">始终显示</button>
         </div>
         <div class="speed-label">模拟速度 <b id="speed-label"></b></div>
         <div class="speed-btns" id="speed-btns">
@@ -421,32 +431,71 @@
     const velArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0x00e5ff, 1.0, 0.5);
     scene.add(velArrow);
 
-    // 轨迹
+    // 轨迹（默认「最近 30 天」仅显示 30 天内的轨迹；可切换为「始终显示」不消失）
     class Trail {
-      constructor(maxPoints, color){
-        this.maxPoints = maxPoints;
-        this.positions = new Float32Array(maxPoints*3);
+      constructor(color){
+        this.mode = '30d';              // '30d' 最近30天（默认） | 'all' 始终显示
+        this.windowSeconds = 30 * 86400;// 30 天
+        this.minDist = 0.25;            // 采样间距（场景单位）
+        this.maxPoints = 500000;        // 存储点数上限（预分配，不再扩容）
+        this.positions = new Float32Array(this.maxPoints * 3);
+        this.times = new Float32Array(this.maxPoints); // 每个点的模拟时间（秒）
         this.count = 0;
+        this.curTime = 0;
         this.last = null;
         this.geo = new THREE.BufferGeometry();
-        this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions,3));
+        this.attr = new THREE.BufferAttribute(this.positions, 3);
+        this.attr.setUsage(THREE.DynamicDrawUsage);
+        this.geo.setAttribute('position', this.attr);
         this.geo.setDrawRange(0,0);
         this.line = new THREE.Line(this.geo, new THREE.LineBasicMaterial({color, transparent:true, opacity:0.85}));
         this.line.frustumCulled = false;
         scene.add(this.line);
       }
-      add(p, minDist){
-        if(this.last){ const d=Math.hypot(p.x-this.last.x,p.y-this.last.y,p.z-this.last.z); if(d<minDist) return; }
-        if(this.count>=this.maxPoints){ this.positions.copyWithin(0,3); this.count=this.maxPoints-1; }
-        this.positions[this.count*3]=p.x; this.positions[this.count*3+1]=p.y; this.positions[this.count*3+2]=p.z;
-        this.count++; this.last=p.clone();
-        this.geo.attributes.position.needsUpdate=true;
-        this.geo.setDrawRange(0,this.count);
+      setMode(mode){ this.mode = mode; this._apply(); }
+      _findStart(cutoff){ // times 单调递增，二分查找第一个 time >= cutoff 的下标
+        let lo = 0, hi = this.count;
+        while(lo < hi){ const mid = (lo + hi) >> 1; if(this.times[mid] < cutoff) lo = mid + 1; else hi = mid; }
+        return lo;
       }
-      reset(){ this.count=0; this.last=null; this.positions.fill(0);
-        this.geo.attributes.position.needsUpdate=true; this.geo.setDrawRange(0,0); }
+      _apply(){
+        if(this.mode === 'all'){ this.geo.setDrawRange(0, this.count); }
+        else { const start = this._findStart(this.curTime - this.windowSeconds); this.geo.setDrawRange(start, this.count - start); }
+      }
+      refresh(t){ this.curTime = t; if(this.mode === '30d') this._apply(); }
+      add(p, t){
+        this.curTime = t;
+        if(this.last){ const d=Math.hypot(p.x-this.last.x,p.y-this.last.y,p.z-this.last.z); if(d<this.minDist) return; }
+        if(this.count >= this.maxPoints){
+          if(this.mode === 'all') return; // 始终显示：达上限冻结
+          const start = this._findStart(this.curTime - this.windowSeconds);
+          if(start <= 0) return;          // 无旧点可弃（异常保护）
+          this.positions.copyWithin(0, start*3, this.count*3);
+          this.times.copyWithin(0, start, this.count);
+          this.count -= start;
+          this.attr.clearUpdateRanges(); // 整块上传
+        }
+        const i = this.count*3;
+        this.positions[i]=p.x; this.positions[i+1]=p.y; this.positions[i+2]=p.z;
+        this.times[this.count] = t;
+        this.count++; this.last=p.clone();
+        this.attr.addUpdateRange(i, 3); // 仅上传新增点（数组元素单位）
+        this.attr.needsUpdate = true;
+        this._apply();
+      }
+      reset(){ this.count=0; this.last=null; this.curTime=0;
+        this.positions.fill(0); this.times.fill(0);
+        this.attr.clearUpdateRanges();
+        this.attr.needsUpdate=true; this.geo.setDrawRange(0,0); }
     }
-    const trail = new Trail(9000, 0xffb300);
+    const trail = new Trail(0xffb300);
+
+    // 轨迹显示模式切换（最近 30 天 / 始终显示）
+    const trailButtons = document.querySelectorAll('.trail-toggle button');
+    trailButtons.forEach(b=> b.addEventListener('click', ()=>{
+      trail.setMode(b.dataset.trail);
+      trailButtons.forEach(x=> x.classList.toggle('active', x.dataset.trail===trail.mode));
+    }));
 
     /* ================= 模拟状态 ================= */
     const sim = { running:false, t:0, state:null, simSpeed:60, status:'预览中' };
@@ -690,13 +739,14 @@
         if(!sim.running) break;
         sim.state=rk4Step(sim.state, sim.t, dt);
         sim.t+=dt;
-        trail.add(new THREE.Vector3(sim.state[0]*DISPLAY_SCALE, sim.state[1]*DISPLAY_SCALE, sim.state[2]*DISPLAY_SCALE), 0.25);
+        trail.add(new THREE.Vector3(sim.state[0]*DISPLAY_SCALE, sim.state[1]*DISPLAY_SCALE, sim.state[2]*DISPLAY_SCALE), sim.t);
         if(checkEvents()) break;
       }
     }
     function animate(){
       const dtReal=Math.min(clock.getDelta(), 0.1);
       if(sim.running) advanceSim(dtReal);
+      trail.refresh(sim.t); // 更新“最近 30 天”时间窗口
 
       // 月球位置
       const mp=moonPosKm(sim.t);
