@@ -11,7 +11,8 @@ A web-based spacecraft orbital-dynamics simulator for cislunar space: it numeric
   - Position + velocity (coordinates, speed, azimuth / elevation)
   - Orbital elements (semi-major axis a, eccentricity e, inclination i, RAAN Ω, argument of periapsis ω, true anomaly ν)
 - **Real-time telemetry panel**: simulation time, speed, altitude above the Earth / Moon surface, and Earth / Moon gravitational acceleration
-- **Trajectory trail**: the spacecraft's flight path is drawn in real time
+- **Trajectory display**: the flight path is drawn in real time, with a toggle between "last 30 days" (default) and "always show"
+- **Speed visualization**: the trajectory can be color-coded by speed (red = slow → blue = fast), or overlaid with vertical speed bars (length = speed) perpendicular to the orbital plane
 - **Adjustable simulation speed**: from 1× up to 1 day per second
 - **Presets**: save / load any initial orbit parameter set (persisted in localStorage)
 - **Camera presets**: overview / Earth / Moon, plus spacecraft follow

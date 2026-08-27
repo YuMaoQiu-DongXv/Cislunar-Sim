@@ -106,6 +106,13 @@
     background:transparent;color:var(--text-dim);border-radius:8px;cursor:pointer;transition:.15s;}
   .trail-toggle button.active{background:linear-gradient(135deg,#7c3aed,#6d28d9);color:#fff;border-color:transparent;font-weight:600;}
 
+  /* Speed visualization toggle */
+  .speedviz-label{font-size:11px;color:var(--text-dim);margin:1px 0 5px;}
+  .speedviz-toggle{display:flex;gap:6px;margin-bottom:12px;}
+  .speedviz-toggle button{flex:1;padding:6px 0;font-size:11px;border:1px solid var(--panel-border);
+    background:transparent;color:var(--text-dim);border-radius:8px;cursor:pointer;transition:.15s;}
+  .speedviz-toggle button.active{background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;border-color:transparent;font-weight:600;}
+
   .cam-btns{display:flex;gap:5px;margin-top:12px;flex-wrap:wrap;align-items:center;}
   .cam-btns button{flex:1;min-width:52px;padding:6px 0;font-size:11.5px;border:1px solid var(--panel-border);
     background:transparent;color:var(--text);border-radius:7px;cursor:pointer;transition:.15s;}
@@ -154,8 +161,9 @@
     <span><i style="background:#2a6fb0"></i>地球</span>
     <span><i style="background:#b8b8b8"></i>月球</span>
     <span><i style="background:#ffffff"></i>航天器</span>
-    <span class="line"><i style="background:#ffb300"></i>轨迹</span>
     <span class="line"><i style="background:#00e5ff"></i>速度方向</span>
+    <span class="line"><i style="background:linear-gradient(90deg,#ff3322,#ffcc33,#22aaff)"></i>轨迹速度：红慢 → 蓝快</span>
+    <span class="line"><i style="background:#9fc4e8"></i>速度竖线</span>
   </div>
 
   <div id="panel">
@@ -210,6 +218,13 @@
         <div class="trail-toggle">
           <button data-trail="30d" class="active">最近 30 天</button>
           <button data-trail="all">始终显示</button>
+        </div>
+        <div class="speedviz-label">速度可视化</div>
+        <div class="speedviz-toggle">
+          <button data-sv="color" class="active">颜色</button>
+          <button data-sv="bars">竖线</button>
+          <button data-sv="both">颜色+竖线</button>
+          <button data-sv="off">关闭</button>
         </div>
         <div class="speed-label">模拟速度 <b id="speed-label"></b></div>
         <div class="speed-btns" id="speed-btns">
@@ -431,70 +446,157 @@
     const velArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0x00e5ff, 1.0, 0.5);
     scene.add(velArrow);
 
-    // 轨迹（默认「最近 30 天」仅显示 30 天内的轨迹；可切换为「始终显示」不消失）
-    class Trail {
-      constructor(color){
-        this.mode = '30d';              // '30d' 最近30天（默认） | 'all' 始终显示
-        this.windowSeconds = 30 * 86400;// 30 天
-        this.minDist = 0.25;            // 采样间距（场景单位）
-        this.maxPoints = 500000;        // 存储点数上限（预分配，不再扩容）
-        this.positions = new Float32Array(this.maxPoints * 3);
-        this.times = new Float32Array(this.maxPoints); // 每个点的模拟时间（秒）
-        this.count = 0;
-        this.curTime = 0;
-        this.last = null;
+    // 速度 → 颜色（红=慢 → 蓝=快），HSL 色相 0°→240°
+    function hslToRgb(h, s, l){
+      let r, g, b;
+      if(s === 0){ r = g = b = l; }
+      else {
+        const q = l < 0.5 ? l*(1+s) : l+s-l*s;
+        const p = 2*l - q;
+        const hue = t => { if(t<0) t+=1; if(t>1) t-=1; return t; };
+        const f = (p,q,t) => { t=hue(t); if(t<1/6) return p+(q-p)*6*t; if(t<1/2) return q; if(t<2/3) return p+(q-p)*(2/3-t)*6; return p; };
+        r = f(p,q,h+1/3); g = f(p,q,h); b = f(p,q,h-1/3);
+      }
+      return [r, g, b];
+    }
+    const SPEED_MAX = 12; // 颜色映射上限（km/s），超出按最快（蓝）处理
+    function speedToColor(speed){
+      const t = Math.min(1, Math.max(0, speed / SPEED_MAX));
+      return hslToRgb((t * 240) / 360, 1.0, 0.55);
+    }
+
+    // 速度竖线：垂直参考平面，长度 = 速度
+    class SpeedBars {
+      constructor(){
+        this.maxBars = 50000;
+        this.barStep = 12;   // 每 12 个轨迹点画一根竖线
+        this.barScale = 1.0; // 半长 = 速度(km/s) * barScale（场景单位）
+        this.positions = new Float32Array(this.maxBars * 6);
         this.geo = new THREE.BufferGeometry();
         this.attr = new THREE.BufferAttribute(this.positions, 3);
         this.attr.setUsage(THREE.DynamicDrawUsage);
         this.geo.setAttribute('position', this.attr);
         this.geo.setDrawRange(0,0);
-        this.line = new THREE.Line(this.geo, new THREE.LineBasicMaterial({color, transparent:true, opacity:0.85}));
+        this.line = new THREE.LineSegments(this.geo, new THREE.LineBasicMaterial({color:0x9fc4e8, transparent:true, opacity:0.55, depthWrite:false}));
         this.line.frustumCulled = false;
+        this.line.visible = false;
         scene.add(this.line);
       }
+      setVisible(v){ this.line.visible = v; }
+      rebuild(trail){
+        if(!this.line.visible) return;
+        const end = trail.count;
+        let b = 0;
+        let i = Math.ceil(trail.drawStart / this.barStep) * this.barStep;
+        for(; i < end && b < this.maxBars; i += this.barStep){
+          const p3 = i*3;
+          const px = trail.positions[p3], py = trail.positions[p3+1], pz = trail.positions[p3+2];
+          const h = trail.speeds[i] * this.barScale;
+          const j = b*6;
+          this.positions[j] = px; this.positions[j+1] = py; this.positions[j+2] = pz - h;
+          this.positions[j+3] = px; this.positions[j+4] = py; this.positions[j+5] = pz + h;
+          b++;
+        }
+        this.geo.setDrawRange(0, b*2);
+        if(b > 0){ this.attr.addUpdateRange(0, b*6); this.attr.needsUpdate = true; }
+      }
+    }
+
+    // 轨迹（默认「最近 30 天」仅显示 30 天内的轨迹；可切换为「始终显示」不消失）
+    class Trail {
+      constructor(){
+        this.mode = '30d';              // '30d' 最近30天（默认） | 'all' 始终显示
+        this.speedViz = 'color';        // 'color' 颜色 | 'bars' 竖线 | 'both' 两者 | 'off' 关闭
+        this.windowSeconds = 30 * 86400;// 30 天
+        this.minDist = 0.25;            // 采样间距（场景单位）
+        this.maxPoints = 500000;        // 存储点数上限（预分配，不再扩容）
+        this.positions = new Float32Array(this.maxPoints * 3);
+        this.times = new Float32Array(this.maxPoints);   // 每个点的模拟时间（秒）
+        this.speeds = new Float32Array(this.maxPoints);  // 每个点的速度（km/s）
+        this.colors = new Float32Array(this.maxPoints * 3); // 每个点的颜色（RGB）
+        this.count = 0;
+        this.curTime = 0;
+        this.drawStart = 0;
+        this.last = null;
+        this.geo = new THREE.BufferGeometry();
+        this.attr = new THREE.BufferAttribute(this.positions, 3);
+        this.attr.setUsage(THREE.DynamicDrawUsage);
+        this.geo.setAttribute('position', this.attr);
+        this.colorAttr = new THREE.BufferAttribute(this.colors, 3);
+        this.colorAttr.setUsage(THREE.DynamicDrawUsage);
+        this.geo.setAttribute('color', this.colorAttr);
+        this.geo.setDrawRange(0,0);
+        this.material = new THREE.LineBasicMaterial({color:0xffb300, vertexColors:true, transparent:true, opacity:0.85});
+        this.line = new THREE.Line(this.geo, this.material);
+        this.line.frustumCulled = false;
+        scene.add(this.line);
+        this.bars = new SpeedBars();
+      }
       setMode(mode){ this.mode = mode; this._apply(); }
-      _findStart(cutoff){ // times 单调递增，二分查找第一个 time >= cutoff 的下标
-        let lo = 0, hi = this.count;
-        while(lo < hi){ const mid = (lo + hi) >> 1; if(this.times[mid] < cutoff) lo = mid + 1; else hi = mid; }
+      setSpeedViz(mode){
+        this.speedViz = mode;
+        this.material.vertexColors = (mode === 'color' || mode === 'both');
+        this.material.needsUpdate = true;
+        this.bars.setVisible(mode === 'bars' || mode === 'both');
+        if(this.bars.line.visible) this.bars.rebuild(this);
+      }
+      _findStart(arr, count, cutoff){ // 单调递增数组，二分查找第一个 >= cutoff 的下标
+        let lo = 0, hi = count;
+        while(lo < hi){ const mid = (lo + hi) >> 1; if(arr[mid] < cutoff) lo = mid + 1; else hi = mid; }
         return lo;
       }
       _apply(){
-        if(this.mode === 'all'){ this.geo.setDrawRange(0, this.count); }
-        else { const start = this._findStart(this.curTime - this.windowSeconds); this.geo.setDrawRange(start, this.count - start); }
+        if(this.mode === 'all'){ this.drawStart = 0; this.geo.setDrawRange(0, this.count); }
+        else { this.drawStart = this._findStart(this.times, this.count, this.curTime - this.windowSeconds); this.geo.setDrawRange(this.drawStart, this.count - this.drawStart); }
       }
       refresh(t){ this.curTime = t; if(this.mode === '30d') this._apply(); }
-      add(p, t){
+      add(p, t, speed){
         this.curTime = t;
         if(this.last){ const d=Math.hypot(p.x-this.last.x,p.y-this.last.y,p.z-this.last.z); if(d<this.minDist) return; }
         if(this.count >= this.maxPoints){
           if(this.mode === 'all') return; // 始终显示：达上限冻结
-          const start = this._findStart(this.curTime - this.windowSeconds);
+          const start = this._findStart(this.times, this.count, this.curTime - this.windowSeconds);
           if(start <= 0) return;          // 无旧点可弃（异常保护）
           this.positions.copyWithin(0, start*3, this.count*3);
           this.times.copyWithin(0, start, this.count);
+          this.speeds.copyWithin(0, start, this.count);
+          this.colors.copyWithin(0, start*3, this.count*3);
           this.count -= start;
-          this.attr.clearUpdateRanges(); // 整块上传
+          this.attr.clearUpdateRanges(); this.colorAttr.clearUpdateRanges(); // 整块上传
         }
         const i = this.count*3;
         this.positions[i]=p.x; this.positions[i+1]=p.y; this.positions[i+2]=p.z;
         this.times[this.count] = t;
+        this.speeds[this.count] = speed;
+        const c = speedToColor(speed);
+        this.colors[i]=c[0]; this.colors[i+1]=c[1]; this.colors[i+2]=c[2];
         this.count++; this.last=p.clone();
-        this.attr.addUpdateRange(i, 3); // 仅上传新增点（数组元素单位）
-        this.attr.needsUpdate = true;
+        this.attr.addUpdateRange(i, 3); this.colorAttr.addUpdateRange(i, 3);
+        this.attr.needsUpdate = true; this.colorAttr.needsUpdate = true;
         this._apply();
       }
-      reset(){ this.count=0; this.last=null; this.curTime=0;
-        this.positions.fill(0); this.times.fill(0);
-        this.attr.clearUpdateRanges();
-        this.attr.needsUpdate=true; this.geo.setDrawRange(0,0); }
+      reset(){ this.count=0; this.last=null; this.curTime=0; this.drawStart=0;
+        this.positions.fill(0); this.times.fill(0); this.speeds.fill(0); this.colors.fill(0);
+        this.attr.clearUpdateRanges(); this.colorAttr.clearUpdateRanges();
+        this.attr.needsUpdate=true; this.colorAttr.needsUpdate=true;
+        this.geo.setDrawRange(0,0);
+        this.bars.rebuild(this);
+      }
     }
-    const trail = new Trail(0xffb300);
+    const trail = new Trail();
 
     // 轨迹显示模式切换（最近 30 天 / 始终显示）
     const trailButtons = document.querySelectorAll('.trail-toggle button');
     trailButtons.forEach(b=> b.addEventListener('click', ()=>{
       trail.setMode(b.dataset.trail);
       trailButtons.forEach(x=> x.classList.toggle('active', x.dataset.trail===trail.mode));
+    }));
+
+    // 速度可视化切换（颜色 / 竖线 / 两者 / 关闭）
+    const speedVizButtons = document.querySelectorAll('.speedviz-toggle button');
+    speedVizButtons.forEach(b=> b.addEventListener('click', ()=>{
+      trail.setSpeedViz(b.dataset.sv);
+      speedVizButtons.forEach(x=> x.classList.toggle('active', x.dataset.sv===trail.speedViz));
     }));
 
     /* ================= 模拟状态 ================= */
@@ -739,7 +841,7 @@
         if(!sim.running) break;
         sim.state=rk4Step(sim.state, sim.t, dt);
         sim.t+=dt;
-        trail.add(new THREE.Vector3(sim.state[0]*DISPLAY_SCALE, sim.state[1]*DISPLAY_SCALE, sim.state[2]*DISPLAY_SCALE), sim.t);
+        trail.add(new THREE.Vector3(sim.state[0]*DISPLAY_SCALE, sim.state[1]*DISPLAY_SCALE, sim.state[2]*DISPLAY_SCALE), sim.t, Math.hypot(sim.state[3], sim.state[4], sim.state[5]));
         if(checkEvents()) break;
       }
     }
@@ -747,6 +849,7 @@
       const dtReal=Math.min(clock.getDelta(), 0.1);
       if(sim.running) advanceSim(dtReal);
       trail.refresh(sim.t); // 更新“最近 30 天”时间窗口
+      trail.bars.rebuild(trail); // 重建速度竖线（若可见）
 
       // 月球位置
       const mp=moonPosKm(sim.t);
