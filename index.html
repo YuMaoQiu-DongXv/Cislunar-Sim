@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>地月系轨道 3D 模拟</title>
+<style>
+  :root{
+    --bg:#05070d;
+    --panel-bg:rgba(14,20,34,0.82);
+    --panel-border:rgba(120,160,220,0.18);
+    --text:#e7edf7;
+    --text-dim:#8fa2bf;
+    --accent:#4da3ff;
+    --accent2:#00e5ff;
+    --warn:#ff6b6b;
+    --ok:#54d68a;
+    --track:#1a2438;
+    --thumb:#4da3ff;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--bg);color:var(--text);
+    font-family:"Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif;}
+  #canvas-container{position:fixed;inset:0;}
+
+  /* Panel */
+  #panel{
+    position:fixed;top:12px;right:12px;bottom:12px;width:356px;
+    background:var(--panel-bg);
+    border:1px solid var(--panel-border);
+    border-radius:14px;
+    backdrop-filter:blur(14px);
+    -webkit-backdrop-filter:blur(14px);
+    display:flex;flex-direction:column;
+    box-shadow:0 8px 40px rgba(0,0,0,0.5);
+    z-index:10;
+  }
+  .panel-header{padding:16px 18px 10px;border-bottom:1px solid var(--panel-border);}
+  .panel-header h1{margin:0;font-size:17px;font-weight:600;letter-spacing:.5px;}
+  .panel-header .sub{margin:4px 0 0;font-size:11.5px;color:var(--text-dim);}
+  .panel-body{overflow-y:auto;padding:14px 18px 20px;flex:1;scrollbar-width:thin;scrollbar-color:var(--track) transparent;}
+  .panel-body::-webkit-scrollbar{width:8px;}
+  .panel-body::-webkit-scrollbar-thumb{background:var(--track);border-radius:4px;}
+  section{margin-bottom:20px;}
+  section h2{margin:0 0 10px;font-size:13px;font-weight:600;color:var(--accent);
+    text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:8px;}
+  section h2::before{content:"";width:3px;height:13px;background:var(--accent);border-radius:2px;}
+
+  /* Mode tabs */
+  .mode-tabs{display:flex;gap:6px;margin-bottom:12px;}
+  .mode-btn{flex:1;padding:8px 0;font-size:12.5px;border:1px solid var(--panel-border);
+    background:transparent;color:var(--text-dim);border-radius:8px;cursor:pointer;transition:.15s;}
+  .mode-btn.active{background:linear-gradient(135deg,#1d4ed8,#2563eb);color:#fff;border-color:transparent;}
+
+  /* Param row */
+  .param-row{margin-bottom:11px;}
+  .param-row .top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:3px;}
+  .param-row label{font-size:12px;color:var(--text-dim);}
+  .param-row .val{font-size:12px;color:var(--accent2);font-variant-numeric:tabular-nums;}
+  .param-row .inputs{display:flex;align-items:center;gap:8px;}
+  input[type=range]{flex:1;appearance:none;-webkit-appearance:none;height:4px;border-radius:2px;
+    background:var(--track);outline:none;cursor:pointer;}
+  input[type=range]::-webkit-slider-thumb{appearance:none;-webkit-appearance:none;width:14px;height:14px;
+    border-radius:50%;background:var(--thumb);border:2px solid #fff;cursor:pointer;box-shadow:0 0 6px rgba(77,163,255,.6);}
+  input[type=range]::-moz-range-thumb{width:14px;height:14px;border-radius:50%;background:var(--thumb);border:2px solid #fff;cursor:pointer;}
+  input[type=number]{width:92px;padding:5px 7px;font-size:12px;color:var(--text);
+    background:#0b1322;border:1px solid var(--panel-border);border-radius:6px;outline:none;
+    font-variant-numeric:tabular-nums;}
+  input[type=number]:focus{border-color:var(--accent);}
+  input[type=number]::-webkit-inner-spin-button{opacity:1;}
+
+  .readout-box{background:#0a1120;border:1px solid var(--panel-border);border-radius:9px;
+    padding:10px 12px;font-size:11.5px;font-family:"Cascadia Code",Consolas,monospace;line-height:1.75;
+    color:var(--text-dim);margin-top:6px;word-break:break-all;}
+  .readout-box b{color:var(--text);font-weight:600;}
+  .warn{margin-top:8px;font-size:11.5px;color:var(--warn);line-height:1.5;}
+  .info{margin-top:8px;font-size:11.5px;color:var(--ok);line-height:1.5;}
+
+  /* Data grid */
+  .data-grid{display:grid;grid-template-columns:1fr 1fr;gap:7px;}
+  .data-item{background:#0a1120;border:1px solid var(--panel-border);border-radius:8px;padding:8px 10px;}
+  .data-item .k{display:block;font-size:10.5px;color:var(--text-dim);margin-bottom:3px;}
+  .data-item .v{font-size:13px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;white-space:nowrap;}
+  .data-item.full{grid-column:1 / -1;}
+
+  /* Controls */
+  .btn-row{display:flex;gap:6px;margin-bottom:10px;}
+  button.btn{flex:1;padding:9px 0;font-size:12.5px;border-radius:8px;border:none;cursor:pointer;font-weight:600;transition:.15s;}
+  .btn-start{background:linear-gradient(135deg,#16a34a,#15803d);color:#fff;}
+  .btn-start:hover{filter:brightness(1.1);}
+  .btn-pause{background:linear-gradient(135deg,#d97706,#b45309);color:#fff;}
+  .btn-reset{background:linear-gradient(135deg,#334155,#1e293b);color:#cbd5e1;}
+  .btn:active{transform:translateY(1px);}
+
+  .speed-label{display:flex;justify-content:space-between;font-size:12px;color:var(--text-dim);margin-bottom:6px;}
+  .speed-label b{color:var(--accent2);font-variant-numeric:tabular-nums;}
+  .speed-btns{display:flex;gap:5px;margin-bottom:8px;flex-wrap:wrap;}
+  .speed-btns button{flex:1;min-width:52px;padding:6px 0;font-size:11px;border:1px solid var(--panel-border);
+    background:transparent;color:var(--text-dim);border-radius:7px;cursor:pointer;transition:.15s;}
+  .speed-btns button.active{background:var(--accent);color:#04121f;border-color:transparent;font-weight:600;}
+  .speed-slider{width:100%;}
+
+  .cam-btns{display:flex;gap:5px;margin-top:12px;flex-wrap:wrap;align-items:center;}
+  .cam-btns button{flex:1;min-width:52px;padding:6px 0;font-size:11.5px;border:1px solid var(--panel-border);
+    background:transparent;color:var(--text);border-radius:7px;cursor:pointer;transition:.15s;}
+  .cam-btns button:hover{border-color:var(--accent);color:var(--accent);}
+  .cam-btns label{font-size:12px;color:var(--text-dim);display:flex;align-items:center;gap:5px;cursor:pointer;margin-top:4px;}
+  .cam-btns input[type=checkbox]{accent-color:var(--accent);}
+
+  /* Presets */
+  .preset-save-row{display:flex;gap:6px;margin-bottom:10px;}
+  .preset-save-row input{flex:1;min-width:0;padding:8px 9px;font-size:12px;color:var(--text);
+    background:#0b1322;border:1px solid var(--panel-border);border-radius:7px;outline:none;}
+  .preset-save-row input:focus{border-color:var(--accent);}
+  .preset-save-row input::placeholder{color:#55657f;}
+  .btn-save{background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;border:none;border-radius:7px;
+    padding:8px 13px;font-size:12px;cursor:pointer;font-weight:600;white-space:nowrap;transition:.15s;}
+  .btn-save:hover{filter:brightness(1.12);}
+  .preset-item{background:#0a1120;border:1px solid var(--panel-border);border-radius:9px;padding:9px 11px;margin-bottom:7px;}
+  .preset-item .p-name{font-size:12.5px;font-weight:600;color:var(--text);display:flex;justify-content:space-between;align-items:center;gap:8px;}
+  .preset-item .p-name .tag{font-size:9.5px;color:var(--accent2);border:1px solid var(--accent2);border-radius:4px;padding:1px 5px;flex-shrink:0;}
+  .preset-item .p-desc{font-size:11px;color:var(--text-dim);margin-top:4px;font-family:"Cascadia Code",Consolas,monospace;line-height:1.5;word-break:break-all;}
+  .preset-item .p-actions{margin-top:8px;display:flex;gap:6px;}
+  .preset-item .p-actions button{flex:1;padding:5px 0;font-size:11px;border:1px solid var(--panel-border);
+    background:transparent;color:var(--text);border-radius:6px;cursor:pointer;transition:.15s;}
+  .preset-item .p-actions button.load{border-color:var(--accent);color:var(--accent);}
+  .preset-item .p-actions button.load:hover{background:rgba(77,163,255,.12);}
+  .preset-item .p-actions button.del{color:var(--warn);border-color:rgba(255,107,107,.4);}
+  .preset-item .p-actions button.del:hover{background:rgba(255,107,107,.12);}
+  .preset-empty{font-size:11.5px;color:var(--text-dim);padding:6px 2px;}
+
+  /* Legend */
+  #legend{position:fixed;left:14px;bottom:14px;z-index:5;display:flex;gap:14px;flex-wrap:wrap;
+    background:rgba(10,16,30,0.6);padding:8px 12px;border-radius:9px;border:1px solid var(--panel-border);}
+  #legend span{font-size:11px;color:var(--text-dim);display:flex;align-items:center;gap:6px;}
+  #legend i{width:11px;height:11px;border-radius:50%;display:inline-block;}
+  #legend .line i{width:16px;height:3px;border-radius:2px;}
+  #hint{position:fixed;left:14px;top:14px;z-index:5;font-size:11.5px;color:var(--text-dim);
+    background:rgba(10,16,30,0.55);padding:6px 10px;border-radius:8px;border:1px solid var(--panel-border);}
+</style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <div id="hint">鼠标左键旋转 · 滚轮缩放 · 右键平移</div>
+
+  <div id="legend">
+    <span><i style="background:#2a6fb0"></i>地球</span>
+    <span><i style="background:#b8b8b8"></i>月球</span>
+    <span><i style="background:#ffffff"></i>航天器</span>
+    <span class="line"><i style="background:#ffb300"></i>轨迹</span>
+    <span class="line"><i style="background:#00e5ff"></i>速度方向</span>
+  </div>
+
+  <div id="panel">
+    <div class="panel-header">
+      <h1>地月系轨道 3D 模拟</h1>
+      <p class="sub">四阶龙格-库塔积分 · 地球 + 月球双体引力场</p>
+    </div>
+    <div class="panel-body">
+
+      <section>
+        <h2>初始轨道设置</h2>
+        <div class="mode-tabs">
+          <button class="mode-btn active" data-mode="posvel">位置 + 速度</button>
+          <button class="mode-btn" data-mode="elements">轨道根数</button>
+        </div>
+        <div id="posvel-panel" class="mode-panel"></div>
+        <div id="elements-panel" class="mode-panel" style="display:none"></div>
+        <div id="state0-readout" class="readout-box"></div>
+        <div id="warn"></div>
+        <div id="info"></div>
+      </section>
+
+      <section>
+        <h2>预设方案</h2>
+        <div class="preset-save-row">
+          <input type="text" id="preset-name" placeholder="预设名称（留空自动命名）" />
+          <button class="btn-save" id="btn-save">保存当前参数</button>
+        </div>
+        <div id="preset-list"></div>
+      </section>
+
+      <section>
+        <h2>实时数据</h2>
+        <div class="data-grid">
+          <div class="data-item"><span class="k">模拟时间</span><span class="v" id="d-time">—</span></div>
+          <div class="data-item"><span class="k">速度</span><span class="v" id="d-speed">—</span></div>
+          <div class="data-item"><span class="k">距地面高度</span><span class="v" id="d-alt-earth">—</span></div>
+          <div class="data-item"><span class="k">距月面高度</span><span class="v" id="d-alt-moon">—</span></div>
+          <div class="data-item"><span class="k">地球引力加速度</span><span class="v" id="d-g-earth">—</span></div>
+          <div class="data-item"><span class="k">月球引力加速度</span><span class="v" id="d-g-moon">—</span></div>
+          <div class="data-item full"><span class="k">状态</span><span class="v" id="d-status">预览中</span></div>
+        </div>
+      </section>
+
+      <section>
+        <h2>控制</h2>
+        <div class="btn-row">
+          <button class="btn btn-start" id="btn-start">开始模拟</button>
+          <button class="btn btn-pause" id="btn-pause">暂停</button>
+          <button class="btn btn-reset" id="btn-reset">重置</button>
+        </div>
+        <div class="speed-label">模拟速度 <b id="speed-label"></b></div>
+        <div class="speed-btns" id="speed-btns">
+          <button data-speed="1">1×</button>
+          <button data-speed="60">1分/秒</button>
+          <button data-speed="600">10分/秒</button>
+          <button data-speed="3600">1时/秒</button>
+          <button data-speed="86400">1天/秒</button>
+        </div>
+        <input type="range" class="speed-slider" id="speed-slider" min="0" max="1" step="0.0001" value="0">
+        <div class="cam-btns">
+          <button data-cam="overview">全景</button>
+          <button data-cam="earth">地球</button>
+          <button data-cam="moon">月球</button>
+          <label><input type="checkbox" id="follow"> 跟随航天器</label>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+    /* ================= 物理常数（单位：km, s） ================= */
+    const MU_EARTH = 398600.4418;   // km^3/s^2
+    const MU_MOON  = 4902.8000;     // km^3/s^2
+    const R_EARTH  = 6371.0;        // km
+    const R_MOON   = 1737.4;        // km
+    const MOON_DIST  = 384400.0;    // km
+    const MOON_PERIOD = 27.321661 * 86400; // s
+    const MOON_OMEGA  = 2 * Math.PI / MOON_PERIOD; // rad/s
+    const DISPLAY_SCALE = 1 / 1000; // 1 场景单位 = 1000 km
+    const ARROW_SCALE = 0.65;       // 速度矢量可视化比例（示意）
+
+    function mulberry32(a){return function(){a|=0;a=a+0x6D2B79F5|0;let t=Math.imul(a^a>>>15,1|a);t=t+Math.imul(t^t>>>7,61|t)^t;return((t^t>>>14)>>>0)/4294967296;};}
+    function moonPosKm(t){ const a=MOON_OMEGA*t; return [MOON_DIST*Math.cos(a), MOON_DIST*Math.sin(a), 0]; }
+    function toScene(km){ return km * DISPLAY_SCALE; }
+
+    /* ================= 轨道根数 -> 位置/速度 ================= */
+    function rot3(th,v){ const c=Math.cos(th),s=Math.sin(th); return [c*v[0]-s*v[1], s*v[0]+c*v[1], v[2]]; }
+    function rot1(th,v){ const c=Math.cos(th),s=Math.sin(th); return [v[0], c*v[1]-s*v[2], s*v[1]+c*v[2]]; }
+    function elementsToState(a,e,incDeg,raanDeg,argpDeg,nuDeg){
+      const inc=incDeg*Math.PI/180, raan=raanDeg*Math.PI/180, argp=argpDeg*Math.PI/180, nu=nuDeg*Math.PI/180;
+      const p = a*(1-e*e);
+      const r = p/(1+e*Math.cos(nu));
+      const rp = [r*Math.cos(nu), r*Math.sin(nu), 0];
+      const vp = [-Math.sqrt(MU_EARTH/p)*Math.sin(nu), Math.sqrt(MU_EARTH/p)*(e+Math.cos(nu)), 0];
+      const pos = rot3(raan, rot1(inc, rot3(argp, rp)));
+      const vel = rot3(raan, rot1(inc, rot3(argp, vp)));
+      return { pos, vel };
+    }
+    function velocityFromDir(speed, azDeg, elevDeg){
+      const az=azDeg*Math.PI/180, el=elevDeg*Math.PI/180;
+      return [speed*Math.cos(el)*Math.cos(az), speed*Math.cos(el)*Math.sin(az), speed*Math.sin(el)];
+    }
+
+    /* ================= 动力学与 RK4 ================= */
+    function accel(pos, t){
+      const mp = moonPosKm(t);
+      const ex=pos[0], ey=pos[1], ez=pos[2];
+      const mx=pos[0]-mp[0], my=pos[1]-mp[1], mz=pos[2]-mp[2];
+      const de2=ex*ex+ey*ey+ez*ez, dm2=mx*mx+my*my+mz*mz;
+      const de=Math.sqrt(de2), dm=Math.sqrt(dm2);
+      const ae=MU_EARTH/(de2*de), am=MU_MOON/(dm2*dm);
+      return [ -ae*ex - am*mx, -ae*ey - am*my, -ae*ez - am*mz ];
+    }
+    function deriv(s,t){
+      const [x,y,z,vx,vy,vz]=s; const a=accel([x,y,z],t);
+      return [vx,vy,vz, a[0],a[1],a[2]];
+    }
+    function rk4Step(s,t,dt){
+      const k1=deriv(s,t);
+      const s2=s.map((v,i)=>v+dt/2*k1[i]);
+      const k2=deriv(s2,t+dt/2);
+      const s3=s.map((v,i)=>v+dt/2*k2[i]);
+      const k3=deriv(s3,t+dt/2);
+      const s4=s.map((v,i)=>v+dt*k3[i]);
+      const k4=deriv(s4,t+dt);
+      return s.map((v,i)=> v + dt/6*(k1[i]+2*k2[i]+2*k3[i]+k4[i]));
+    }
+
+    /* ================= 输入参数 ================= */
+    const params = {
+      mode:'posvel',
+      x:6771, y:0, z:0, speed:7.67, az:90, elev:0,
+      a:6771, e:0, i:0, raan:0, argp:0, nu:0
+    };
+    function computeState0(){
+      if(params.mode==='posvel'){
+        const vel=velocityFromDir(params.speed, params.az, params.elev);
+        return { pos:[params.x,params.y,params.z], vel };
+      }
+      return elementsToState(params.a, params.e, params.i, params.raan, params.argp, params.nu);
+    }
+
+    /* ================= 三维场景 ================= */
+    const container = document.getElementById('canvas-container');
+    const renderer = new THREE.WebGLRenderer({ antialias:true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth/window.innerHeight, 0.1, 20000);
+    camera.position.set(192, 260, 520);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+    controls.minDistance = 2;
+    controls.maxDistance = 4000;
+    controls.target.set(192, 0, 0);
+
+    // 光照
+    scene.add(new THREE.AmbientLight(0x40506a, 1.4));
+    const sun = new THREE.DirectionalLight(0xffffff, 2.2);
+    sun.position.set(900, 500, 600);
+    scene.add(sun);
+
+    // 星空
+    (function addStars(){
+      const n=2500, pos=new Float32Array(n*3), rnd=mulberry32(99);
+      for(let i=0;i<n;i++){
+        const th=rnd()*Math.PI*2, ph=Math.acos(2*rnd()-1), r=1500+rnd()*800;
+        pos[i*3]=r*Math.sin(ph)*Math.cos(th); pos[i*3+1]=r*Math.cos(ph); pos[i*3+2]=r*Math.sin(ph)*Math.sin(th);
+      }
+      const g=new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+      const m=new THREE.PointsMaterial({color:0xffffff,size:1.5,sizeAttenuation:false,transparent:true,opacity:0.8});
+      scene.add(new THREE.Points(g,m));
+    })();
+
+    // 参考平面网格（x-y 平面）
+    const grid = new THREE.PolarGridHelper(420, 24, 14, 64, 0x3a4a66, 0x24324d);
+    grid.rotation.x = -Math.PI/2;
+    grid.material.transparent = true; grid.material.opacity = 0.22;
+    scene.add(grid);
+
+    // 坐标轴（原点）
+    const axes = new THREE.AxesHelper(16);
+    scene.add(axes);
+
+    // 月球公转轨道（示意圆环）
+    (function addMoonOrbit(){
+      const pts=[]; for(let i=0;i<=256;i++){ const a=i/256*Math.PI*2;
+        pts.push(new THREE.Vector3(Math.cos(a)*toScene(MOON_DIST), Math.sin(a)*toScene(MOON_DIST), 0)); }
+      const g=new THREE.BufferGeometry().setFromPoints(pts);
+      const line=new THREE.Line(g, new THREE.LineBasicMaterial({color:0x6a7f9a, transparent:true, opacity:0.35}));
+      scene.add(line);
+    })();
+
+    // 地球
+    function makeEarthTexture(){
+      const c=document.createElement('canvas'); c.width=1024; c.height=512;
+      const g=c.getContext('2d');
+      const grad=g.createLinearGradient(0,0,0,512);
+      grad.addColorStop(0,'#123c7a'); grad.addColorStop(0.5,'#1c5da8'); grad.addColorStop(1,'#123c7a');
+      g.fillStyle=grad; g.fillRect(0,0,1024,512);
+      const rnd=mulberry32(7); g.fillStyle='#3f9b4f';
+      for(let i=0;i<26;i++){ const x=rnd()*1024,y=rnd()*512,r=30+rnd()*90;
+        g.beginPath(); g.ellipse(x,y,r,r*0.6,rnd()*Math.PI,0,Math.PI*2); g.fill(); }
+      g.fillStyle='#e8f2ff'; g.fillRect(0,0,1024,20); g.fillRect(0,492,1024,20);
+      return new THREE.CanvasTexture(c);
+    }
+    const earth = new THREE.Mesh(
+      new THREE.SphereGeometry(toScene(R_EARTH), 64, 64),
+      new THREE.MeshStandardMaterial({ map:makeEarthTexture(), roughness:0.75, metalness:0.0 })
+    );
+    scene.add(earth);
+    // 大气光晕
+    const atmo = new THREE.Mesh(
+      new THREE.SphereGeometry(toScene(R_EARTH)*1.04, 48, 48),
+      new THREE.MeshBasicMaterial({ color:0x66aaff, transparent:true, opacity:0.16, side:THREE.BackSide })
+    );
+    scene.add(atmo);
+
+    // 月球
+    function makeMoonTexture(){
+      const c=document.createElement('canvas'); c.width=512; c.height=256;
+      const g=c.getContext('2d'); g.fillStyle='#b5b5b5'; g.fillRect(0,0,512,256);
+      const rnd=mulberry32(42);
+      for(let i=0;i<220;i++){ const x=rnd()*512,y=rnd()*256,r=2+rnd()*10;
+        g.fillStyle = rnd()<0.5 ? '#8f8f8f' : '#d0d0d0';
+        g.beginPath(); g.arc(x,y,r,0,Math.PI*2); g.fill(); }
+      return new THREE.CanvasTexture(c);
+    }
+    const moon = new THREE.Mesh(
+      new THREE.SphereGeometry(toScene(R_MOON), 48, 48),
+      new THREE.MeshStandardMaterial({ map:makeMoonTexture(), roughness:0.9, metalness:0.0 })
+    );
+    scene.add(moon);
+
+    // 航天器
+    const sc = new THREE.Mesh(
+      new THREE.SphereGeometry(0.35, 20, 20),
+      new THREE.MeshBasicMaterial({ color:0xffffff })
+    );
+    scene.add(sc);
+    const scGlow = new THREE.Sprite(new THREE.SpriteMaterial({
+      map:(()=>{ const c=document.createElement('canvas'); c.width=c.height=64; const g=c.getContext('2d');
+        const gr=g.createRadialGradient(32,32,2,32,32,32); gr.addColorStop(0,'rgba(255,255,255,0.9)');
+        gr.addColorStop(1,'rgba(255,255,255,0)'); g.fillStyle=gr; g.fillRect(0,0,64,64);
+        return new THREE.CanvasTexture(c); })(),
+      transparent:true, depthWrite:false
+    }));
+    scGlow.scale.set(3,3,1); sc.add(scGlow);
+
+    // 速度方向箭头
+    const velArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0x00e5ff, 1.0, 0.5);
+    scene.add(velArrow);
+
+    // 轨迹
+    class Trail {
+      constructor(maxPoints, color){
+        this.maxPoints = maxPoints;
+        this.positions = new Float32Array(maxPoints*3);
+        this.count = 0;
+        this.last = null;
+        this.geo = new THREE.BufferGeometry();
+        this.geo.setAttribute('position', new THREE.BufferAttribute(this.positions,3));
+        this.geo.setDrawRange(0,0);
+        this.line = new THREE.Line(this.geo, new THREE.LineBasicMaterial({color, transparent:true, opacity:0.85}));
+        this.line.frustumCulled = false;
+        scene.add(this.line);
+      }
+      add(p, minDist){
+        if(this.last){ const d=Math.hypot(p.x-this.last.x,p.y-this.last.y,p.z-this.last.z); if(d<minDist) return; }
+        if(this.count>=this.maxPoints){ this.positions.copyWithin(0,3); this.count=this.maxPoints-1; }
+        this.positions[this.count*3]=p.x; this.positions[this.count*3+1]=p.y; this.positions[this.count*3+2]=p.z;
+        this.count++; this.last=p.clone();
+        this.geo.attributes.position.needsUpdate=true;
+        this.geo.setDrawRange(0,this.count);
+      }
+      reset(){ this.count=0; this.last=null; this.positions.fill(0);
+        this.geo.attributes.position.needsUpdate=true; this.geo.setDrawRange(0,0); }
+    }
+    const trail = new Trail(9000, 0xffb300);
+
+    /* ================= 模拟状态 ================= */
+    const sim = { running:false, t:0, state:null, simSpeed:60, status:'预览中' };
+    let state0 = computeState0();
+    sim.state = [...state0.pos, ...state0.vel];
+    const TERMINAL = new Set(['已坠毁地球','已坠毁月球','已脱离地月系']);
+
+    /* ================= 相机预设 / 跟随 ================= */
+    const presets = {
+      overview:{ pos:new THREE.Vector3(192,260,520), tgt:new THREE.Vector3(192,0,0) },
+      earth:{ pos:new THREE.Vector3(0,16,30), tgt:new THREE.Vector3(0,0,0) },
+      moon:{ pos:new THREE.Vector3(toScene(MOON_DIST), 7, 16), tgt:new THREE.Vector3(toScene(MOON_DIST),0,0) }
+    };
+    function setPreset(name){
+      followCheckbox.checked = false;
+      const p=presets[name]; if(!p) return;
+      camera.position.copy(p.pos); controls.target.copy(p.tgt); controls.update();
+    }
+
+    /* ================= 界面构建 ================= */
+    const posVelCfg = [
+      {key:'x',label:'X 位置',unit:'km',min:-500000,max:500000,sstep:100,nstep:1},
+      {key:'y',label:'Y 位置',unit:'km',min:-500000,max:500000,sstep:100,nstep:1},
+      {key:'z',label:'Z 位置',unit:'km',min:-500000,max:500000,sstep:100,nstep:1},
+      {key:'speed',label:'速度大小',unit:'km/s',min:0,max:15,sstep:0.01,nstep:0.001},
+      {key:'az',label:'速度方位角',unit:'°',min:0,max:360,sstep:1,nstep:1},
+      {key:'elev',label:'速度仰角',unit:'°',min:-90,max:90,sstep:1,nstep:1}
+    ];
+    const elemCfg = [
+      {key:'a',label:'半长轴 a',unit:'km',min:6400,max:600000,sstep:100,nstep:1},
+      {key:'e',label:'偏心率 e',unit:'',min:0,max:0.95,sstep:0.001,nstep:0.0005},
+      {key:'i',label:'倾角 i',unit:'°',min:0,max:180,sstep:1,nstep:0.1},
+      {key:'raan',label:'升交点赤经 Ω',unit:'°',min:0,max:360,sstep:1,nstep:0.1},
+      {key:'argp',label:'近地点幅角 ω',unit:'°',min:0,max:360,sstep:1,nstep:0.1},
+      {key:'nu',label:'真近点角 ν',unit:'°',min:0,max:360,sstep:1,nstep:0.1}
+    ];
+    function fmtNum(v){ return (Math.round(v*1000)/1000).toString(); }
+    const paramWidgets = {};
+    function buildRows(container, cfg){
+      for(const p of cfg){
+        const row=document.createElement('div'); row.className='param-row';
+        row.innerHTML = '<div class="top"><label>'+p.label+'</label><span class="val"></span></div>'
+          + '<div class="inputs"><input type="range" class="slider" min="'+p.min+'" max="'+p.max+'" step="'+p.sstep+'">'
+          + '<input type="number" class="num" min="'+p.min+'" max="'+p.max+'" step="'+p.nstep+'"></div>';
+        const slider=row.querySelector('.slider'), num=row.querySelector('.num'), val=row.querySelector('.val');
+        paramWidgets[p.key] = { slider, num, val, cfg:p };
+        slider.value = num.value = params[p.key];
+        val.textContent = fmtNum(params[p.key]) + (p.unit?(' '+p.unit):'');
+        slider.addEventListener('input', ()=>{ params[p.key]=parseFloat(slider.value); num.value=params[p.key];
+          val.textContent=fmtNum(params[p.key])+(p.unit?(' '+p.unit):''); onParamChange(); });
+        num.addEventListener('input', ()=>{ let v=parseFloat(num.value); if(isNaN(v)) return;
+          v=Math.max(p.min, Math.min(p.max, v)); params[p.key]=v; slider.value=v;
+          val.textContent=fmtNum(v)+(p.unit?(' '+p.unit):''); onParamChange(); });
+        container.appendChild(row);
+      }
+    }
+    buildRows(document.getElementById('posvel-panel'), posVelCfg);
+    buildRows(document.getElementById('elements-panel'), elemCfg);
+
+    function syncInputsFromParams(){
+      for(const key in paramWidgets){
+        const w=paramWidgets[key], v=params[key];
+        w.slider.value=v; w.num.value=v;
+        w.val.textContent=fmtNum(v)+(w.cfg.unit?(' '+w.cfg.unit):'');
+      }
+    }
+
+    // 模式切换
+    const modeBtns = document.querySelectorAll('.mode-btn');
+    function setMode(mode){
+      params.mode = mode;
+      modeBtns.forEach(b=> b.classList.toggle('active', b.dataset.mode===mode));
+      document.getElementById('posvel-panel').style.display = mode==='posvel' ? '' : 'none';
+      document.getElementById('elements-panel').style.display = mode==='elements' ? '' : 'none';
+      onParamChange();
+    }
+    modeBtns.forEach(b=> b.addEventListener('click', ()=> setMode(b.dataset.mode)));
+
+    /* ================= 读数与状态 ================= */
+    const $ = id => document.getElementById(id);
+    function fmtTime(t){
+      if(t<0)t=0;
+      if(t<60) return t.toFixed(1)+' 秒';
+      if(t<3600){ const m=Math.floor(t/60); return m+' 分 '+(t-m*60).toFixed(0)+' 秒'; }
+      if(t<86400){ const h=Math.floor(t/3600); return h+' 时 '+Math.floor((t-h*3600)/60)+' 分'; }
+      const d=Math.floor(t/86400); return d+' 天 '+Math.floor((t-d*86400)/3600)+' 时';
+    }
+    function fmtKm(v){ return Math.round(v).toLocaleString('en-US')+' km'; }
+    function fmtAcc(a){ return a<0.01 ? a.toExponential(2)+' m/s²' : a.toFixed(4)+' m/s²'; }
+
+    function onParamChange(){
+      state0 = computeState0();
+      if(!sim.running){
+        sim.t=0; sim.state=[...state0.pos,...state0.vel]; trail.reset(); sim.status='预览中';
+      }
+      updateState0Readout();
+    }
+    function updateState0Readout(){
+      const p=state0.pos, v=state0.vel, sp=Math.hypot(v[0],v[1],v[2]);
+      $('state0-readout').innerHTML =
+        't=0 位置：<b>('+p.map(x=>Math.round(x).toLocaleString('en-US')).join(', ')+')</b> km<br>'
+        +'t=0 速度：<b>('+v.map(x=>x.toFixed(3)).join(', ')+')</b> km/s · |v|='+sp.toFixed(3)+' km/s';
+      const warnEl=$('warn'), infoEl=$('info'); warnEl.textContent=''; infoEl.textContent='';
+      if(params.mode==='elements'){
+        const per=params.a*(1-params.e), apo=params.a*(1+params.e);
+        infoEl.textContent='近地点 '+Math.round(per).toLocaleString('en-US')+' km · 远地点 '+Math.round(apo).toLocaleString('en-US')+' km';
+        if(per < R_EARTH) warnEl.textContent='⚠ 近地点低于地球半径（'+R_EARTH+' km），航天器将撞上地球。';
+        else if(params.e>=1) warnEl.textContent='⚠ 偏心率 ≥ 1，为开放轨道（抛物线/双曲线）。';
+      } else {
+        const r=Math.hypot(p[0],p[1],p[2]);
+        infoEl.textContent='距地心 '+Math.round(r).toLocaleString('en-US')+' km · 距地面 '+Math.round(r-R_EARTH).toLocaleString('en-US')+' km';
+      }
+    }
+    function updateLive(){
+      const s=sim.state, vx=s[3],vy=s[4],vz=s[5];
+      const speed=Math.hypot(vx,vy,vz);
+      const de=Math.hypot(s[0],s[1],s[2]);
+      const mp=moonPosKm(sim.t); const dm=Math.hypot(s[0]-mp[0],s[1]-mp[1],s[2]-mp[2]);
+      $('d-time').textContent = fmtTime(sim.t);
+      $('d-speed').textContent = speed.toFixed(3)+' km/s';
+      $('d-alt-earth').textContent = fmtKm(de-R_EARTH);
+      $('d-alt-moon').textContent = fmtKm(dm-R_MOON);
+      $('d-g-earth').textContent = fmtAcc(MU_EARTH/(de*de)*1000);
+      $('d-g-moon').textContent = fmtAcc(MU_MOON/(dm*dm)*1000);
+      $('d-status').textContent = sim.status;
+    }
+    function updateStatusUI(){
+      $('d-status').textContent = sim.status;
+      $('btn-pause').textContent = sim.running ? '暂停' : (TERMINAL.has(sim.status) ? '已停止' : '继续');
+    }
+
+    /* ================= 控制按钮 ================= */
+    function start(){
+      state0=computeState0(); sim.state=[...state0.pos,...state0.vel];
+      sim.t=0; trail.reset(); sim.running=true; sim.status='运行中'; updateStatusUI();
+    }
+    function togglePause(){
+      if(TERMINAL.has(sim.status)) return;
+      if(sim.running){ sim.running=false; sim.status='暂停'; }
+      else { sim.running=true; sim.status='运行中'; }
+      updateStatusUI();
+    }
+    function reset(){
+      state0=computeState0(); sim.state=[...state0.pos,...state0.vel];
+      sim.t=0; trail.reset(); sim.running=false; sim.status='预览中'; updateStatusUI();
+    }
+    $('btn-start').addEventListener('click', start);
+    $('btn-pause').addEventListener('click', togglePause);
+    $('btn-reset').addEventListener('click', reset);
+
+    // 模拟速度
+    const speedSlider=$('speed-slider'), speedLabel=$('speed-label');
+    const speedBtns=[...document.querySelectorAll('#speed-btns button')];
+    const LOG_MAX=Math.log10(86400);
+    function updateSpeedUI(){
+      speedLabel.textContent='每现实秒推进 '+fmtTime(sim.simSpeed);
+      speedBtns.forEach(b=> b.classList.toggle('active', Math.abs(parseFloat(b.dataset.speed)-sim.simSpeed)<0.5));
+    }
+    speedSlider.value = Math.log10(sim.simSpeed)/LOG_MAX;
+    speedSlider.addEventListener('input', ()=>{ sim.simSpeed=Math.pow(10, parseFloat(speedSlider.value)*LOG_MAX); updateSpeedUI(); });
+    speedBtns.forEach(b=> b.addEventListener('click', ()=>{
+      sim.simSpeed=parseFloat(b.dataset.speed);
+      speedSlider.value=Math.log10(sim.simSpeed)/LOG_MAX; updateSpeedUI();
+    }));
+
+    // 相机预设 + 跟随
+    const followCheckbox=$('follow');
+    document.querySelectorAll('.cam-btns button').forEach(b=> b.addEventListener('click', ()=> setPreset(b.dataset.cam)));
+
+    /* ================= 预设方案（保存 / 调用初始参数） ================= */
+    const PRESETS_KEY='em_orbit_presets_v1';
+    function loadPresets(){ try{ const a=JSON.parse(localStorage.getItem(PRESETS_KEY)); return Array.isArray(a)?a:[]; }catch(e){ return []; } }
+    function savePresets(list){ try{ localStorage.setItem(PRESETS_KEY, JSON.stringify(list)); }catch(e){} }
+    function escapeHtml(s){ return String(s).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+    function describePreset(p){
+      if(p.mode==='elements'){
+        return 'a='+Math.round(p.params.a).toLocaleString('en-US')+' km, e='+p.params.e+', i='+p.params.i+'°, Ω='+p.params.raan+'°, ω='+p.params.argp+'°, ν='+p.params.nu+'°';
+      }
+      return '('+Math.round(p.params.x).toLocaleString('en-US')+', '+Math.round(p.params.y).toLocaleString('en-US')+', '
+        +Math.round(p.params.z).toLocaleString('en-US')+') km · |v|='+p.params.speed.toFixed(2)+' km/s';
+    }
+    function renderPresets(){
+      const list=loadPresets(), el=$('preset-list');
+      if(list.length===0){ el.innerHTML='<div class="preset-empty">暂无保存的预设。运行出有趣轨道后，点「保存当前参数」即可存档，之后可随时载入。</div>'; return; }
+      el.innerHTML='';
+      list.forEach((p, idx)=>{
+        const item=document.createElement('div'); item.className='preset-item';
+        item.innerHTML =
+          '<div class="p-name">'+escapeHtml(p.name)+'<span class="tag">'+(p.mode==='elements'?'轨道根数':'位置·速度')+'</span></div>'
+          +'<div class="p-desc">'+escapeHtml(describePreset(p))+'</div>'
+          +'<div class="p-actions"><button class="load">载入</button><button class="del">删除</button></div>';
+        item.querySelector('.load').addEventListener('click', ()=> applyPreset(p));
+        item.querySelector('.del').addEventListener('click', ()=>{
+          const l=loadPresets(); l.splice(idx,1); savePresets(l); renderPresets();
+        });
+        el.appendChild(item);
+      });
+    }
+    function applyPreset(p){
+      Object.assign(params, p.params);
+      syncInputsFromParams();
+      setMode(p.mode);
+      if(typeof p.simSpeed==='number' && p.simSpeed>0){
+        sim.simSpeed=p.simSpeed;
+        speedSlider.value=Math.log10(sim.simSpeed)/LOG_MAX;
+        updateSpeedUI();
+      }
+      reset();                          // 回到 t=0 预览状态
+      setPreset(p.mode==='elements' ? 'overview' : 'earth');
+    }
+    $('btn-save').addEventListener('click', ()=>{
+      let name=$('preset-name').value.trim();
+      if(!name){
+        const d=new Date();
+        name='预设 '+(d.getMonth()+1)+'/'+d.getDate()+' '+d.getHours()+':'+String(d.getMinutes()).padStart(2,'0');
+      }
+      const list=loadPresets();
+      list.push({ id:Date.now(), name, mode:params.mode, params:{...params}, simSpeed:sim.simSpeed });
+      savePresets(list); renderPresets();
+      $('preset-name').value='';
+    });
+    $('preset-name').addEventListener('keydown', e=>{ if(e.key==='Enter') $('btn-save').click(); });
+
+    /* ================= 事件检测 ================= */
+    function checkEvents(){
+      const p=sim.state;
+      const de=Math.hypot(p[0],p[1],p[2]);
+      const mp=moonPosKm(sim.t); const dm=Math.hypot(p[0]-mp[0],p[1]-mp[1],p[2]-mp[2]);
+      if(de<=R_EARTH){ sim.status='已坠毁地球'; sim.running=false; updateStatusUI(); return true; }
+      if(dm<=R_MOON){ sim.status='已坠毁月球'; sim.running=false; updateStatusUI(); return true; }
+      if(de>1.2e6){ sim.status='已脱离地月系'; sim.running=false; updateStatusUI(); return true; }
+      return false;
+    }
+
+    /* ================= 主循环 ================= */
+    const clock=new THREE.Clock();
+    function advanceSim(dtReal){
+      const target=sim.simSpeed*dtReal, maxStep=5;
+      const n=Math.max(1, Math.ceil(target/maxStep)), dt=target/n;
+      for(let i=0;i<n;i++){
+        if(!sim.running) break;
+        sim.state=rk4Step(sim.state, sim.t, dt);
+        sim.t+=dt;
+        trail.add(new THREE.Vector3(sim.state[0]*DISPLAY_SCALE, sim.state[1]*DISPLAY_SCALE, sim.state[2]*DISPLAY_SCALE), 0.25);
+        if(checkEvents()) break;
+      }
+    }
+    function animate(){
+      const dtReal=Math.min(clock.getDelta(), 0.1);
+      if(sim.running) advanceSim(dtReal);
+
+      // 月球位置
+      const mp=moonPosKm(sim.t);
+      moon.position.set(mp[0]*DISPLAY_SCALE, mp[1]*DISPLAY_SCALE, mp[2]*DISPLAY_SCALE);
+
+      // 航天器
+      const sx=sim.state[0]*DISPLAY_SCALE, sy=sim.state[1]*DISPLAY_SCALE, sz=sim.state[2]*DISPLAY_SCALE;
+      sc.position.set(sx,sy,sz);
+
+      // 速度箭头
+      const vv=new THREE.Vector3(sim.state[3],sim.state[4],sim.state[5]);
+      const spd=vv.length();
+      if(spd>1e-9){ velArrow.visible=true; velArrow.setDirection(vv.normalize()); velArrow.setLength(spd*ARROW_SCALE,1.0,0.5); velArrow.position.set(sx,sy,sz); }
+      else velArrow.visible=false;
+
+      // 相机跟随
+      controls.enabled = !followCheckbox.checked;
+      if(followCheckbox.checked){
+        const off=new THREE.Vector3(0,9,18);
+        camera.position.copy(sc.position).add(off);
+        controls.target.copy(sc.position);
+      } else {
+        controls.update();
+      }
+
+      updateLive();
+      renderer.render(scene, camera);
+    }
+    renderer.setAnimationLoop(animate);
+
+    window.addEventListener('resize', ()=>{
+      camera.aspect=window.innerWidth/window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    /* ================= 初始化 ================= */
+    updateSpeedUI();
+    onParamChange();
+    updateLive();
+    updateStatusUI();
+    renderPresets();
+  </script>
+</body>
+</html>
