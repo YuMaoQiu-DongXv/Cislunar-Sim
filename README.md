@@ -1,5 +1,7 @@
 # Cislunar-Sim · 地月系轨道 3D 模拟器
 
+[English](./README.en.md)
+
 一个基于 Web 的地月空间（cislunar space）航天器轨道动力学模拟器：在**地球 + 月球**双体引力场（限制性三体问题）中，用**四阶龙格-库塔（RK4）数值积分**实时计算并可视化航天器的位置、速度与轨迹。
 
 ## ✨ 功能特性
@@ -43,8 +45,9 @@ python -m http.server 8000
 
 ```
 Cislunar-Sim/
-├── index.html   # 主程序（单文件，含全部逻辑与界面）
+├── index.html     # 主程序（单文件，含全部逻辑与界面）
 ├── README.md
+├── README.en.md   # 英文版简介
 └── LICENSE
 ```
 
