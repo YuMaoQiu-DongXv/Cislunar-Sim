@@ -350,8 +350,10 @@
       const mp = moonPosKm(t);
       const ex=pos[0], ey=pos[1], ez=pos[2];
       const mx=pos[0]-mp[0], my=pos[1]-mp[1], mz=pos[2]-mp[2];
-      const de2=ex*ex+ey*ey+ez*ez, dm2=mx*mx+my*my+mz*mz;
-      const de=Math.sqrt(de2), dm=Math.sqrt(dm2);
+      const SOFT = 1.0;                                   // 引力软化长度（km），防 de/dm=0 时除零
+      const de2 = ex*ex+ey*ey+ez*ez + SOFT*SOFT;
+      const dm2 = mx*mx+my*my+mz*mz + SOFT*SOFT;
+      const de = Math.sqrt(de2), dm = Math.sqrt(dm2);
       const ae=MU_EARTH/(de2*de), am=MU_MOON/(dm2*dm);
       return [ -ae*ex - am*mx, -ae*ey - am*my, -ae*ez - am*mz ];
     }
@@ -746,8 +748,8 @@
       if(t<86400){ const h=Math.floor(t/3600); return h+' 时 '+Math.floor((t-h*3600)/60)+' 分'; }
       const d=Math.floor(t/86400); return d+' 天 '+Math.floor((t-d*86400)/3600)+' 时';
     }
-    function fmtKm(v){ return Math.round(v).toLocaleString('en-US')+' km'; }
-    function fmtAcc(a){ return a<0.01 ? a.toExponential(2)+' m/s²' : a.toFixed(4)+' m/s²'; }
+    function fmtKm(v){ return Number.isFinite(v) ? Math.round(v).toLocaleString('en-US')+' km' : '—'; }
+    function fmtAcc(a){ if(!Number.isFinite(a)) return '—'; return a<0.01 ? a.toExponential(2)+' m/s²' : a.toFixed(4)+' m/s²'; }
 
     // 开普勒轨道预览（仅地球引力，二体问题）
     const keplerCheckbox = $('kepler-preview');
@@ -791,6 +793,7 @@
       } else {
         const r=Math.hypot(p[0],p[1],p[2]);
         infoEl.textContent='距地心 '+Math.round(r).toLocaleString('en-US')+' km · 距地面 '+Math.round(r-R_EARTH).toLocaleString('en-US')+' km';
+        if(r <= R_EARTH) warnEl.textContent='⚠ 位置在地球内部（半径 '+R_EARTH+' km 以内），航天器将撞上地球。';
       }
     }
     function updateLive(){
@@ -799,7 +802,7 @@
       const de=Math.hypot(s[0],s[1],s[2]);
       const mp=moonPosKm(sim.t); const dm=Math.hypot(s[0]-mp[0],s[1]-mp[1],s[2]-mp[2]);
       $('d-time').textContent = fmtTime(sim.t);
-      $('d-speed').textContent = speed.toFixed(3)+' km/s';
+      $('d-speed').textContent = (Number.isFinite(speed) ? speed.toFixed(3) : '—') + ' km/s';
       $('d-alt-earth').textContent = fmtKm(de-R_EARTH);
       $('d-alt-moon').textContent = fmtKm(dm-R_MOON);
       $('d-g-earth').textContent = fmtAcc(MU_EARTH/(de*de)*1000);
@@ -910,8 +913,8 @@
       const p=sim.state;
       const de=Math.hypot(p[0],p[1],p[2]);
       const mp=moonPosKm(sim.t); const dm=Math.hypot(p[0]-mp[0],p[1]-mp[1],p[2]-mp[2]);
-      if(de<=R_EARTH){ sim.status='已坠毁地球'; sim.running=false; updateStatusUI(); return true; }
-      if(dm<=R_MOON){ sim.status='已坠毁月球'; sim.running=false; updateStatusUI(); return true; }
+      if(!Number.isFinite(de) || de<=R_EARTH){ sim.status='已坠毁地球'; sim.running=false; updateStatusUI(); return true; }
+      if(!Number.isFinite(dm) || dm<=R_MOON){ sim.status='已坠毁月球'; sim.running=false; updateStatusUI(); return true; }
       if(de>1.2e6){ sim.status='已脱离地月系'; sim.running=false; updateStatusUI(); return true; }
       return false;
     }

@@ -12,7 +12,8 @@ Vec3 accel(const Vec3& p, double t) {
     Vec3 mp = moonPosKm(t);
     Vec3 de = p;          // 地球固定在原点
     Vec3 dm = p - mp;     // 相对月球
-    double de2 = de.dot(de), dm2 = dm.dot(dm);
+    const double SOFT = 1.0;   // 引力软化长度（km），防 de/dm=0 时除零
+    double de2 = de.dot(de) + SOFT * SOFT, dm2 = dm.dot(dm) + SOFT * SOFT;
     double de_ = std::sqrt(de2), dm_ = std::sqrt(dm2);
     double ae = MU_EARTH / (de2 * de_);
     double am = MU_MOON / (dm2 * dm_);

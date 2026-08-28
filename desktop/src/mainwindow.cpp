@@ -384,8 +384,8 @@ bool MainWindow::checkEvents() {
     double de = m_state.pos.length();
     Vec3 mp = moonPosKm(m_simTime);
     double dm = (m_state.pos - mp).length();
-    if (de <= R_EARTH) { m_running = false; m_lStatus->setText(QStringLiteral("已坠毁地球")); return true; }
-    if (dm <= R_MOON)  { m_running = false; m_lStatus->setText(QStringLiteral("已坠毁月球")); return true; }
+    if (!std::isfinite(de) || de <= R_EARTH) { m_running = false; m_lStatus->setText(QStringLiteral("已坠毁地球")); return true; }
+    if (!std::isfinite(dm) || dm <= R_MOON)  { m_running = false; m_lStatus->setText(QStringLiteral("已坠毁月球")); return true; }
     if (de > 1.2e6)    { m_running = false; m_lStatus->setText(QStringLiteral("已脱离地月系")); return true; }
     return false;
 }
@@ -447,9 +447,9 @@ void MainWindow::updateTelemetry() {
     Vec3 mp = moonPosKm(m_simTime);
     double dm = (m_state.pos - mp).length();
     m_lTime->setText(fmtTime(m_simTime));
-    m_lSpeed->setText(QString::number(speed, 'f', 3) + QStringLiteral(" km/s"));
-    m_lAltE->setText(QString::number(de - R_EARTH, 'f', 1) + QStringLiteral(" km"));
-    m_lAltM->setText(QString::number(dm - R_MOON, 'f', 1) + QStringLiteral(" km"));
+    m_lSpeed->setText((std::isfinite(speed) ? QString::number(speed, 'f', 3) : QStringLiteral("—")) + QStringLiteral(" km/s"));
+    m_lAltE->setText((std::isfinite(de) ? QString::number(de - R_EARTH, 'f', 1) : QStringLiteral("—")) + QStringLiteral(" km"));
+    m_lAltM->setText((std::isfinite(dm) ? QString::number(dm - R_MOON, 'f', 1) : QStringLiteral("—")) + QStringLiteral(" km"));
     m_lAccE->setText(fmtAccel(MU_EARTH / (de * de) * 1000.0));
     m_lAccM->setText(fmtAccel(MU_MOON / (dm * dm) * 1000.0));
     if (m_running) m_lStatus->setText(QStringLiteral("运行中"));
@@ -561,6 +561,7 @@ QString MainWindow::fmtTime(double t) {
 }
 
 QString MainWindow::fmtAccel(double a) {
+    if (!std::isfinite(a)) return QStringLiteral("—");
     if (a < 0.01) return QString::number(a, 'e', 2) + QStringLiteral(" m/s²");
     return QString::number(a, 'f', 4) + QStringLiteral(" m/s²");
 }
