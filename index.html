@@ -817,7 +817,15 @@
     /* ================= 控制按钮 ================= */
     function start(){
       state0=computeState0(); sim.state=[...state0.pos,...state0.vel];
-      sim.t=0; trail.reset(); sim.running=true; sim.status='运行中'; updateStatusUI();
+      sim.t=0; trail.reset();
+      // 初始位置在地球/月球内部：物理上即「已坠毁」，直接判定并停止，不开始积分
+      // （避免地心附近引力发散导致 RK4 数值爆炸）
+      const de0 = Math.hypot(state0.pos[0], state0.pos[1], state0.pos[2]);
+      const mp0 = moonPosKm(0);
+      const dm0 = Math.hypot(state0.pos[0]-mp0[0], state0.pos[1]-mp0[1], state0.pos[2]-mp0[2]);
+      if(de0 <= R_EARTH){ sim.running=false; sim.status='已坠毁地球'; updateStatusUI(); updateLive(); updateKeplerPreview(); return; }
+      if(dm0 <= R_MOON){ sim.running=false; sim.status='已坠毁月球'; updateStatusUI(); updateLive(); updateKeplerPreview(); return; }
+      sim.running=true; sim.status='运行中'; updateStatusUI();
       updateKeplerPreview();   // 运行后隐藏开普勒预览线
     }
     function togglePause(){

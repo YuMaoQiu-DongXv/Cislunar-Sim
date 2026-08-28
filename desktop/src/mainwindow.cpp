@@ -314,6 +314,14 @@ void MainWindow::onStart() {
     m_trail.clear();
     m_trailTimes.clear();
     m_trailSpeeds.clear();
+    // 初始位置在地球/月球内部：物理上即「已坠毁」，直接判定并停止，不开始积分
+    // （避免地心附近引力发散导致 RK4 数值爆炸）
+    double de0 = m_state.pos.length();
+    Vec3 mp0 = moonPosKm(0.0);
+    double dm0 = (m_state.pos - mp0).length();
+    if (de0 <= R_EARTH) { m_running = false; m_terminal = true; m_pauseBtn->setText(QStringLiteral("已停止")); m_lStatus->setText(QStringLiteral("已坠毁地球")); pushScene(); updateTelemetry(); return; }
+    if (dm0 <= R_MOON)  { m_running = false; m_terminal = true; m_pauseBtn->setText(QStringLiteral("已停止")); m_lStatus->setText(QStringLiteral("已坠毁月球")); pushScene(); updateTelemetry(); return; }
+    m_terminal = false;
     m_running = true;
     m_pauseBtn->setText(QStringLiteral("暂停"));
     pushScene();
@@ -321,6 +329,7 @@ void MainWindow::onStart() {
 }
 
 void MainWindow::onPause() {
+    if (m_terminal) return;   // 终止态（坠毁/脱离）不再响应继续
     if (m_running) { m_running = false; m_pauseBtn->setText(QStringLiteral("继续")); }
     else { m_running = true; m_pauseBtn->setText(QStringLiteral("暂停")); }
     updateTelemetry();
@@ -328,6 +337,7 @@ void MainWindow::onPause() {
 
 void MainWindow::onReset() {
     m_running = false;
+    m_terminal = false;
     m_state = computeState0();
     m_simTime = 0;
     m_trail.clear();
@@ -384,9 +394,9 @@ bool MainWindow::checkEvents() {
     double de = m_state.pos.length();
     Vec3 mp = moonPosKm(m_simTime);
     double dm = (m_state.pos - mp).length();
-    if (!std::isfinite(de) || de <= R_EARTH) { m_running = false; m_lStatus->setText(QStringLiteral("已坠毁地球")); return true; }
-    if (!std::isfinite(dm) || dm <= R_MOON)  { m_running = false; m_lStatus->setText(QStringLiteral("已坠毁月球")); return true; }
-    if (de > 1.2e6)    { m_running = false; m_lStatus->setText(QStringLiteral("已脱离地月系")); return true; }
+    if (!std::isfinite(de) || de <= R_EARTH) { m_running = false; m_terminal = true; m_lStatus->setText(QStringLiteral("已坠毁地球")); return true; }
+    if (!std::isfinite(dm) || dm <= R_MOON)  { m_running = false; m_terminal = true; m_lStatus->setText(QStringLiteral("已坠毁月球")); return true; }
+    if (de > 1.2e6)    { m_running = false; m_terminal = true; m_lStatus->setText(QStringLiteral("已脱离地月系")); return true; }
     return false;
 }
 
@@ -452,7 +462,8 @@ void MainWindow::updateTelemetry() {
     m_lAltM->setText((std::isfinite(dm) ? QString::number(dm - R_MOON, 'f', 1) : QStringLiteral("—")) + QStringLiteral(" km"));
     m_lAccE->setText(fmtAccel(MU_EARTH / (de * de) * 1000.0));
     m_lAccM->setText(fmtAccel(MU_MOON / (dm * dm) * 1000.0));
-    if (m_running) m_lStatus->setText(QStringLiteral("运行中"));
+    if (m_terminal) { /* 终止态：保留 m_lStatus 的坠毁/脱离文本，不覆盖 */ }
+    else if (m_running) m_lStatus->setText(QStringLiteral("运行中"));
     else if (m_simTime > 0) m_lStatus->setText(QStringLiteral("已暂停"));
     else m_lStatus->setText(QStringLiteral("预览中"));
 }

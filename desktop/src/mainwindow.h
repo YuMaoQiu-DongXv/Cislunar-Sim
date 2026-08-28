@@ -49,6 +49,7 @@ private:
     double m_simTime = 0;
     double m_simSpeed = 60;
     bool m_running = false;
+    bool m_terminal = false;         // 是否已进入终止态（坠毁/脱离），防止被覆盖或误操作
     bool m_trailAll = false;         // false=最近30天, true=始终显示
     bool m_keplerPreview = true;     // 开普勒轨道预览（仅地球引力）
     QString m_speedViz = "color";    // color / bars / both / off
