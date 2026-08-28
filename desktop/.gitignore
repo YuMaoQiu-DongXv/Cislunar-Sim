@@ -1,0 +1,17 @@
+# 构建产物
+build/
+dist/
+*.zip
+
+# CMake 缓存
+CMakeCache.txt
+CMakeFiles/
+
+# 编译中间文件
+*.obj
+*.o
+*.pdb
+
+# VS / Qt
+.vs/
+*.user

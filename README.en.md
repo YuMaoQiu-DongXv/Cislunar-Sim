@@ -4,6 +4,8 @@
 
 A web-based spacecraft orbital-dynamics simulator for cislunar space: it numerically integrates and visualizes a spacecraft's position, velocity, and trajectory in the **Earth + Moon** two-body gravity field (the restricted three-body problem) using a **4th-order Runge–Kutta (RK4)** integrator.
 
+> 🖥️ **Desktop edition (Windows)**: see [`desktop/`](./desktop/README.md), a native rewrite with Qt 6 + OpenGL that builds into a standalone exe.
+
 ## ✨ Features
 
 - **Interactive 3D scene**: rotate / zoom / pan with the mouse, starfield background, and to-scale celestial bodies
@@ -46,7 +48,8 @@ python -m http.server 8000
 
 ```
 Cislunar-Sim/
-├── index.html     # main program (single file, contains all logic and UI)
+├── index.html     # web edition (single file, contains all logic and UI)
+├── desktop/       # desktop edition (Qt6 + OpenGL, see desktop/README.md)
 ├── README.md
 ├── README.en.md   # English introduction
 └── LICENSE

@@ -4,6 +4,8 @@
 
 一个基于 Web 的地月空间（cislunar space）航天器轨道动力学模拟器：在**地球 + 月球**双体引力场（限制性三体问题）中，用**四阶龙格-库塔（RK4）数值积分**实时计算并可视化航天器的位置、速度与轨迹。
 
+> 🖥️ **桌面版（Windows）**：见 [`desktop/`](./desktop/README.md)，用 Qt 6 + OpenGL 原生重写，可编译为独立 exe。
+
 ## ✨ 功能特性
 
 - **3D 交互场景**：鼠标旋转 / 滚轮缩放 / 右键平移，星空背景与真实比例天体
@@ -46,7 +48,8 @@ python -m http.server 8000
 
 ```
 Cislunar-Sim/
-├── index.html     # 主程序（单文件，含全部逻辑与界面）
+├── index.html     # Web 版主程序（单文件，含全部逻辑与界面）
+├── desktop/       # 桌面版（Qt6 + OpenGL，见 desktop/README.md）
 ├── README.md
 ├── README.en.md   # 英文版简介
 └── LICENSE
