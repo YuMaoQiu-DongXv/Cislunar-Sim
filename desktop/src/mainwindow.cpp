@@ -9,6 +9,7 @@
 #include <QLabel>
 #include <QSlider>
 #include <QDoubleSpinBox>
+#include <QCheckBox>
 #include <QPushButton>
 #include <QLineEdit>
 #include <QListWidget>
@@ -121,6 +122,16 @@ MainWindow::MainWindow(QWidget* parent) : QMainWindow(parent) {
     styleButton(m_btnVizBoth, false);
     styleButton(m_btnVizOff, false);
     panelLayout->addWidget(vizGroup);
+
+    // ---- 开普勒轨道预览 ----
+    m_keplerCheck = new QCheckBox(QStringLiteral("开普勒轨道预览（仅地球引力）"));
+    m_keplerCheck->setChecked(true);
+    m_keplerCheck->setStyleSheet("color:#8fa2bf;");
+    connect(m_keplerCheck, &QCheckBox::toggled, this, [this](bool on){
+        m_keplerPreview = on;
+        pushScene();
+    });
+    panelLayout->addWidget(m_keplerCheck);
 
     // ---- 预设方案 ----
     auto* presetGroup = new QGroupBox(QStringLiteral("预设方案"), panel);
@@ -421,6 +432,12 @@ void MainWindow::pushScene() {
             d.barVerts.push_back(px); d.barVerts.push_back(py); d.barVerts.push_back(pz + h);
         }
     }
+
+    // 开普勒轨道预览（仅地球引力，只在预览状态且开关开启时计算）
+    if (m_keplerPreview && !m_running && m_simTime == 0) {
+        d.keplerKm = keplerOrbitPoints(m_state.pos, m_state.vel, MU_EARTH, 360, 2e6);
+    }
+
     m_renderer->setScene(d);
 }
 

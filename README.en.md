@@ -18,6 +18,7 @@ A web-based spacecraft orbital-dynamics simulator for cislunar space: it numeric
 - **Adjustable simulation speed**: from 1× up to 1 day per second
 - **Presets**: save / load any initial orbit parameter set (persisted in localStorage)
 - **Camera presets**: overview / Earth / Moon, plus spacecraft follow
+- **Kepler orbit preview (Earth gravity only)**: in the initial-orbit preview state (t=0), draw an extra **green analytic orbit** (two-body problem: ellipse / parabola / hyperbola) so you can directly compare how the Moon's gravity pulls the real trajectory away from the pure Kepler path; toggleable anytime and auto-hidden once the simulation starts
 
 ## 🚀 Quick Start
 
@@ -43,6 +44,7 @@ python -m http.server 8000
 - **Gravity field**: Earth + Moon two-body system (circular restricted three-body approximation: Earth fixed at the origin, Moon on a circular orbit with a 27.32-day period)
 - **Numerical integration**: 4th-order Runge–Kutta (RK4) over the six state variables `[x, y, z, vx, vy, vz]`
 - **Units**: km / s; display scale 1 scene unit = 1000 km (true scale)
+- **Kepler orbit preview**: from the current position + velocity, analytically derive the angular momentum **h** and eccentricity vector **e**, build the orbital plane and sample the whole conic — a closed ellipse for e<1, or an open parabola / hyperbola (e≥1) clamped to a 2,000,000 km radius asymptote limit for ellipses; the green orbit passes exactly through the spacecraft's current position for direct comparison against the RK4 trajectory
 
 ## 📁 Project Structure
 

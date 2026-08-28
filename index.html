@@ -113,6 +113,10 @@
     background:transparent;color:var(--text-dim);border-radius:8px;cursor:pointer;transition:.15s;}
   .speedviz-toggle button.active{background:linear-gradient(135deg,#0ea5e9,#0284c7);color:#fff;border-color:transparent;font-weight:600;}
 
+  /* Kepler preview toggle */
+  .kepler-toggle{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-dim);margin:2px 0 12px;cursor:pointer;}
+  .kepler-toggle input[type=checkbox]{accent-color:#4ade80;width:14px;height:14px;cursor:pointer;}
+
   .cam-btns{display:flex;gap:5px;margin-top:12px;flex-wrap:wrap;align-items:center;}
   .cam-btns button{flex:1;min-width:52px;padding:6px 0;font-size:11.5px;border:1px solid var(--panel-border);
     background:transparent;color:var(--text);border-radius:7px;cursor:pointer;transition:.15s;}
@@ -164,6 +168,7 @@
     <span class="line"><i style="background:#00e5ff"></i>速度方向</span>
     <span class="line"><i style="background:linear-gradient(90deg,#ff3322,#ffcc33,#22aaff)"></i>轨迹速度：红慢 → 蓝快</span>
     <span class="line"><i style="background:#9fc4e8"></i>速度竖线</span>
+    <span class="line"><i style="background:#4ade80"></i>开普勒轨道（仅地球引力）</span>
   </div>
 
   <div id="panel">
@@ -226,6 +231,7 @@
           <button data-sv="both">颜色+竖线</button>
           <button data-sv="off">关闭</button>
         </div>
+        <label class="kepler-toggle"><input type="checkbox" id="kepler-preview" checked> 开普勒轨道预览（仅地球引力）</label>
         <div class="speed-label">模拟速度 <b id="speed-label"></b></div>
         <div class="speed-btns" id="speed-btns">
           <button data-speed="1">1×</button>
@@ -290,6 +296,53 @@
     function velocityFromDir(speed, azDeg, elevDeg){
       const az=azDeg*Math.PI/180, el=elevDeg*Math.PI/180;
       return [speed*Math.cos(el)*Math.cos(az), speed*Math.cos(el)*Math.sin(az), speed*Math.sin(el)];
+    }
+
+    /* ================= 开普勒轨道（仅地球引力，二体问题解析解） ================= */
+    // 给定相对地球的位置 pos(km) 与速度 vel(km/s)，返回忽略月球引力时的
+    // 圆锥曲线轨道采样点（椭圆闭合 / 抛物线·双曲线开放），单位 km。
+    function keplerOrbitPoints(pos, vel, mu, n, rMax){
+      const r = Math.hypot(pos[0], pos[1], pos[2]);
+      if(r < 1e-6) return [];
+      // 角动量 h = r × v
+      const hx = pos[1]*vel[2] - pos[2]*vel[1];
+      const hy = pos[2]*vel[0] - pos[0]*vel[2];
+      const hz = pos[0]*vel[1] - pos[1]*vel[0];
+      const h = Math.hypot(hx, hy, hz);
+      if(h < 1e-9) return [];                           // 径向/零速度退化，无轨道
+      const p = h*h/mu;                                 // 半正焦弦
+      // 偏心率矢量 e = (v × h)/mu - r/|r|
+      const vxh = vel[1]*hz - vel[2]*hy;
+      const vyh = vel[2]*hx - vel[0]*hz;
+      const vzh = vel[0]*hy - vel[1]*hx;
+      const ex = vxh/mu - pos[0]/r;
+      const ey = vyh/mu - pos[1]/r;
+      const ez = vzh/mu - pos[2]/r;
+      const e = Math.hypot(ex, ey, ez);
+      // 轨道平面基向量：p̂=近地点方向，n̂=法向，q̂=n̂×p̂
+      let px, py, pz;
+      if(e > 1e-6){ px=ex/e; py=ey/e; pz=ez/e; }
+      else { px=pos[0]/r; py=pos[1]/r; pz=pos[2]/r; }   // 近圆轨道用当前位置方向
+      const nx=hx/h, ny=hy/h, nz=hz/h;
+      const qx=ny*pz-nz*py, qy=nz*px-nx*pz, qz=nx*py-ny*px;
+      // 真近点角 θ 的范围：椭圆闭合 [0,2π]；抛物线/双曲线开放，受渐近线限制
+      let thMin, thMax;
+      if(e < 1){ thMin = 0; thMax = 2*Math.PI; }
+      else {
+        const lim = (e > 1) ? Math.acos(-1/e) : (Math.PI - 0.02);
+        thMin = -lim + 1e-4; thMax = lim - 1e-4;
+      }
+      const pts = [];
+      for(let i=0;i<=n;i++){
+        const theta = thMin + (thMax - thMin) * i / n;
+        const denom = 1 + e*Math.cos(theta);
+        if(Math.abs(denom) < 1e-6) continue;
+        const rr = p / denom;
+        if(rr < 0 || rr > rMax) continue;               // 限制半径，避免画到无穷远
+        const cx = rr*Math.cos(theta), cy = rr*Math.sin(theta);
+        pts.push([px*cx + qx*cy, py*cx + qy*cy, pz*cx + qz*cy]);
+      }
+      return pts;
     }
 
     /* ================= 动力学与 RK4 ================= */
@@ -445,6 +498,14 @@
     // 速度方向箭头
     const velArrow = new THREE.ArrowHelper(new THREE.Vector3(1,0,0), new THREE.Vector3(0,0,0), 1, 0x00e5ff, 1.0, 0.5);
     scene.add(velArrow);
+
+    // 开普勒轨道预览线（仅地球引力，二体问题解析轨道）
+    const keplerLine = new THREE.Line(
+      new THREE.BufferGeometry(),
+      new THREE.LineBasicMaterial({ color:0x4ade80, transparent:true, opacity:0.65 })
+    );
+    keplerLine.frustumCulled = false;
+    scene.add(keplerLine);
 
     // 速度 → 颜色（红=慢 → 蓝=快），HSL 色相 0°→240°
     function hslToRgb(h, s, l){
@@ -688,12 +749,33 @@
     function fmtKm(v){ return Math.round(v).toLocaleString('en-US')+' km'; }
     function fmtAcc(a){ return a<0.01 ? a.toExponential(2)+' m/s²' : a.toFixed(4)+' m/s²'; }
 
+    // 开普勒轨道预览（仅地球引力，二体问题）
+    const keplerCheckbox = $('kepler-preview');
+    function updateKeplerPreview(){
+      if(!keplerCheckbox.checked || sim.status !== '预览中'){ keplerLine.visible = false; return; }
+      const pts = keplerOrbitPoints(state0.pos, state0.vel, MU_EARTH, 360, 2e6);
+      if(pts.length < 2){ keplerLine.visible = false; return; }
+      const arr = new Float32Array(pts.length * 3);
+      for(let i=0;i<pts.length;i++){
+        arr[i*3]   = pts[i][0] * DISPLAY_SCALE;
+        arr[i*3+1] = pts[i][1] * DISPLAY_SCALE;
+        arr[i*3+2] = pts[i][2] * DISPLAY_SCALE;
+      }
+      keplerLine.geometry.dispose();
+      const g = new THREE.BufferGeometry();
+      g.setAttribute('position', new THREE.BufferAttribute(arr, 3));
+      keplerLine.geometry = g;
+      keplerLine.visible = true;
+    }
+    keplerCheckbox.addEventListener('change', updateKeplerPreview);
+
     function onParamChange(){
       state0 = computeState0();
       if(!sim.running){
         sim.t=0; sim.state=[...state0.pos,...state0.vel]; trail.reset(); sim.status='预览中';
       }
       updateState0Readout();
+      updateKeplerPreview();
     }
     function updateState0Readout(){
       const p=state0.pos, v=state0.vel, sp=Math.hypot(v[0],v[1],v[2]);
@@ -733,6 +815,7 @@
     function start(){
       state0=computeState0(); sim.state=[...state0.pos,...state0.vel];
       sim.t=0; trail.reset(); sim.running=true; sim.status='运行中'; updateStatusUI();
+      updateKeplerPreview();   // 运行后隐藏开普勒预览线
     }
     function togglePause(){
       if(TERMINAL.has(sim.status)) return;
@@ -743,6 +826,7 @@
     function reset(){
       state0=computeState0(); sim.state=[...state0.pos,...state0.vel];
       sim.t=0; trail.reset(); sim.running=false; sim.status='预览中'; updateStatusUI();
+      updateKeplerPreview();   // 回到预览后重新显示开普勒轨道
     }
     $('btn-start').addEventListener('click', start);
     $('btn-pause').addEventListener('click', togglePause);

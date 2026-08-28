@@ -1,5 +1,6 @@
 #pragma once
 #include <cmath>
+#include <vector>
 
 // ---- 基础向量 ----
 struct Vec3 {
@@ -36,3 +37,5 @@ State rk4Step(const State& s, double t, double dt);
 Vec3  velocityFromDir(double speed, double azDeg, double elevDeg);
 State elementsToState(double a, double e, double incDeg, double raanDeg, double argpDeg, double nuDeg);
 double circularSpeed(double r);
+// 开普勒轨道（仅地球引力，二体问题解析解）：返回忽略月球引力时的圆锥曲线采样点（km）
+std::vector<Vec3> keplerOrbitPoints(const Vec3& pos, const Vec3& vel, double mu, int n, double rMax);

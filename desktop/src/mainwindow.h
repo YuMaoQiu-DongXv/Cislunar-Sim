@@ -14,6 +14,7 @@ class QPushButton;
 class QLineEdit;
 class QListWidget;
 class QDoubleSpinBox;
+class QCheckBox;
 
 class MainWindow : public QMainWindow {
     Q_OBJECT
@@ -49,6 +50,7 @@ private:
     double m_simSpeed = 60;
     bool m_running = false;
     bool m_trailAll = false;         // false=最近30天, true=始终显示
+    bool m_keplerPreview = true;     // 开普勒轨道预览（仅地球引力）
     QString m_speedViz = "color";    // color / bars / both / off
     std::vector<Vec3> m_trail;
     std::vector<double> m_trailTimes;
@@ -64,6 +66,7 @@ private:
     QListWidget* m_presetList = nullptr;
     QPushButton *m_btnTrail30d=nullptr, *m_btnTrailAll=nullptr;
     QPushButton *m_btnVizColor=nullptr, *m_btnVizBars=nullptr, *m_btnVizBoth=nullptr, *m_btnVizOff=nullptr;
+    QCheckBox* m_keplerCheck = nullptr;
     std::vector<ParamBinding> m_paramBindings;
 
     State computeState0() const;

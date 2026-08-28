@@ -71,3 +71,48 @@ State elementsToState(double a, double e, double incDeg, double raanDeg, double 
 }
 
 double circularSpeed(double r) { return std::sqrt(MU_EARTH / r); }
+
+std::vector<Vec3> keplerOrbitPoints(const Vec3& pos, const Vec3& vel, double mu, int n, double rMax) {
+    std::vector<Vec3> pts;
+    double r = pos.length();
+    if (r < 1e-6) return pts;
+    // 角动量 h = r × v
+    Vec3 h{ pos.y * vel.z - pos.z * vel.y,
+            pos.z * vel.x - pos.x * vel.z,
+            pos.x * vel.y - pos.y * vel.x };
+    double hm = h.length();
+    if (hm < 1e-9) return pts;                         // 径向/零速度退化，无轨道
+    double p = hm * hm / mu;                            // 半正焦弦
+    // 偏心率矢量 e = (v × h)/mu - r/|r|
+    Vec3 vxh{ vel.y * h.z - vel.z * h.y,
+              vel.z * h.x - vel.x * h.z,
+              vel.x * h.y - vel.y * h.x };
+    Vec3 ev = vxh * (1.0 / mu) - pos * (1.0 / r);
+    double e = ev.length();
+    // 轨道平面基向量：p̂=近地点方向，n̂=法向，q̂=n̂×p̂
+    Vec3 pv;
+    if (e > 1e-6) pv = ev * (1.0 / e);
+    else pv = pos * (1.0 / r);                          // 近圆轨道用当前位置方向
+    Vec3 nv = h * (1.0 / hm);
+    Vec3 qv{ nv.y * pv.z - nv.z * pv.y,
+             nv.z * pv.x - nv.x * pv.z,
+             nv.x * pv.y - nv.y * pv.x };
+    // 真近点角 θ 的范围：椭圆闭合 [0,2π]；抛物线/双曲线开放，受渐近线限制
+    double thMin, thMax;
+    if (e < 1.0) { thMin = 0.0; thMax = 2.0 * PI; }
+    else {
+        double lim = (e > 1.0) ? std::acos(-1.0 / e) : (PI - 0.02);
+        thMin = -lim + 1e-4; thMax = lim - 1e-4;
+    }
+    pts.reserve((size_t)n + 1);
+    for (int i = 0; i <= n; ++i) {
+        double th = thMin + (thMax - thMin) * i / n;
+        double denom = 1.0 + e * std::cos(th);
+        if (std::abs(denom) < 1e-6) continue;
+        double rr = p / denom;
+        if (rr < 0 || rr > rMax) continue;              // 限制半径，避免画到无穷远
+        double cx = rr * std::cos(th), cy = rr * std::sin(th);
+        pts.push_back(pv * cx + qv * cy);
+    }
+    return pts;
+}

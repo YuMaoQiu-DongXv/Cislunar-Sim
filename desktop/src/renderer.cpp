@@ -94,6 +94,7 @@ Renderer::~Renderer() {
     m_trailVao.destroy(); m_trailVbo.destroy(); m_trailColorVbo.destroy();
     m_barVao.destroy(); m_barVbo.destroy();
     m_arrowVao.destroy(); m_arrowVbo.destroy();
+    m_keplerVao.destroy(); m_keplerVbo.destroy();
     m_ringVao.destroy(); m_ringVbo.destroy();
     m_gridVao.destroy(); m_gridVbo.destroy();
     m_starVao.destroy(); m_starVbo.destroy();
@@ -130,6 +131,7 @@ void Renderer::initializeGL() {
     initTrail();
     initBars();
     initArrow();
+    initKepler();
     initRingGrid();
     initStars();
 
@@ -207,6 +209,15 @@ void Renderer::initArrow() {
     glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
     m_arrowVao.release();
+}
+
+void Renderer::initKepler() {
+    m_keplerVao.create(); m_keplerVao.bind();
+    m_keplerVbo.create(); m_keplerVbo.bind();
+    m_keplerVbo.setUsagePattern(QOpenGLBuffer::StreamDraw);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    m_keplerVao.release();
 }
 
 void Renderer::initRingGrid() {
@@ -415,6 +426,29 @@ void Renderer::paintGL() {
         glDrawArrays(GL_LINE_STRIP, 0, n);
         m_trail->release();
         m_trailVao.release();
+    }
+
+    // 开普勒轨道预览（仅地球引力）
+    int nk = (int)m_scene.keplerKm.size();
+    if (nk >= 2) {
+        std::vector<float> kpts((size_t)nk * 3);
+        for (int i = 0; i < nk; ++i) {
+            kpts[i*3+0] = (float)(m_scene.keplerKm[i].x * SC);
+            kpts[i*3+1] = (float)(m_scene.keplerKm[i].y * SC);
+            kpts[i*3+2] = (float)(m_scene.keplerKm[i].z * SC);
+        }
+        m_keplerVao.bind();
+        m_keplerVbo.bind();
+        m_keplerVbo.allocate(kpts.data(), (int)(kpts.size() * sizeof(float)));
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        m_color->bind();
+        m_color->setUniformValue("uMVP", proj * view);
+        m_color->setUniformValue("uColor", QVector4D(0.29f, 0.87f, 0.50f, 0.65f)); // 绿色 0x4ade80
+        glDrawArrays(GL_LINE_STRIP, 0, nk);
+        m_color->release();
+        glDisable(GL_BLEND);
+        m_keplerVao.release();
     }
 
     // 速度竖线

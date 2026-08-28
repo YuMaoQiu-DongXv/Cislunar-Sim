@@ -18,6 +18,7 @@ struct SceneData {
     std::vector<Vec3> trailKm;      // 轨迹点（已按窗口过滤，km）
     std::vector<float> trailColors; // 每点颜色 RGB（3 * trailKm.size()）
     std::vector<float> barVerts;    // 速度竖线顶点（每根 2 顶点 * 3 分量，场景单位）
+    std::vector<Vec3> keplerKm;     // 开普勒轨道预览点（km）
     bool showArrow = true;
 };
 
@@ -64,6 +65,10 @@ private:
     QOpenGLBuffer m_arrowVbo{QOpenGLBuffer::VertexBuffer};
     QOpenGLVertexArrayObject m_arrowVao;
 
+    // 开普勒轨道预览
+    QOpenGLBuffer m_keplerVbo{QOpenGLBuffer::VertexBuffer};
+    QOpenGLVertexArrayObject m_keplerVao;
+
     // 月球轨道圆 + 参考网格
     QOpenGLBuffer m_ringVbo{QOpenGLBuffer::VertexBuffer};
     QOpenGLVertexArrayObject m_ringVao;
@@ -88,6 +93,7 @@ private:
     void initTrail();
     void initBars();
     void initArrow();
+    void initKepler();
     void initRingGrid();
     void initStars();
     void initShader(QOpenGLShaderProgram* p, const char* vs, const char* fs);
